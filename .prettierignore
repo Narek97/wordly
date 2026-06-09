@@ -1,0 +1,7 @@
+.next
+out
+build
+public
+src/generated
+pnpm-lock.yaml
+*.md
