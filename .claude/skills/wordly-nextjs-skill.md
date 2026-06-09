@@ -169,6 +169,19 @@ const session = await auth()
 export { handlers as GET, handlers as POST } from "@/lib/auth"
 ```
 
+### Next.js 16 — `middleware.ts` renamed to `proxy.ts`
+
+```ts
+// WRONG — middleware.ts is deprecated, throws warning
+export function middleware(request: NextRequest) { ... }
+
+// CORRECT — proxy.ts, exported function named proxy
+// src/proxy.ts
+export function proxy(request: NextRequest) { ... }
+```
+
+The API (`NextRequest`, `NextResponse`, `config.matcher`) is identical — only the filename and function name changed.
+
 ### tRPC v11 — `initTRPC` setup and React Query v5 integration
 
 ```ts
@@ -227,7 +240,7 @@ wordly/
 │   ├── schema.prisma
 │   └── migrations/
 ├── src/
-│   ├── middleware.ts              # admin.wordly.com → rewrites to /admin/*
+│   ├── proxy.ts                   # admin.wordly.com → rewrites to /admin/*
 │   ├── app/
 │   │   ├── layout.tsx             # root layout (fonts, providers)
 │   │   ├── globals.css
@@ -283,11 +296,11 @@ wordly/
 └── eslint.config.mjs
 ```
 
-### Subdomain middleware pattern
+### Subdomain proxy pattern
 
 ```ts
-// src/middleware.ts
-export function middleware(request: NextRequest) {
+// src/proxy.ts  ← NOT middleware.ts (deprecated in Next.js 16)
+export function proxy(request: NextRequest) {
   const hostname = request.headers.get("host") ?? ""
   const isAdminSubdomain = hostname.startsWith("admin.")
 
