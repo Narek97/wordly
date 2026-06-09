@@ -219,48 +219,93 @@ pnpm format
 
 ## File structure
 
+Wordly uses **subdomain routing**: `admin.wordly.com` → middleware rewrites to `/admin/*` internally. One Next.js app, two domains.
+
 ```
 wordly/
 ├── prisma/
-│   ├── schema.prisma            # DB models
+│   ├── schema.prisma
 │   └── migrations/
 ├── src/
+│   ├── middleware.ts              # admin.wordly.com → rewrites to /admin/*
 │   ├── app/
-│   │   ├── layout.tsx           # Root layout (Geist font, metadata)
-│   │   ├── page.tsx             # Home page (Server Component)
-│   │   ├── globals.css          # Tailwind v4 @theme config + CSS vars
-│   │   ├── api/
-│   │   │   ├── auth/
-│   │   │   │   └── [...nextauth]/route.ts   # next-auth handlers
-│   │   │   └── trpc/
-│   │   │       └── [trpc]/route.ts          # tRPC HTTP handler
-│   │   └── (auth)/
-│   │       ├── login/page.tsx
-│   │       └── register/page.tsx
+│   │   ├── layout.tsx             # root layout (fonts, providers)
+│   │   ├── globals.css
+│   │   ├── (main)/                # wordly.com — route group, no URL prefix
+│   │   │   ├── layout.tsx         # public header/footer
+│   │   │   ├── page.tsx           # / → all words
+│   │   │   └── words/[slug]/
+│   │   │       └── page.tsx       # /words/[slug] → word detail
+│   │   ├── admin/                 # admin.wordly.com (reached via middleware rewrite)
+│   │   │   ├── layout.tsx         # admin shell + auth guard
+│   │   │   ├── page.tsx           # admin.wordly.com/ → word manager
+│   │   │   ├── login/
+│   │   │   │   └── page.tsx       # admin.wordly.com/login
+│   │   │   └── words/new/
+│   │   │       └── page.tsx       # admin.wordly.com/words/new
+│   │   └── api/
+│   │       ├── auth/[...nextauth]/route.ts
+│   │       └── trpc/[trpc]/route.ts
 │   ├── components/
-│   │   └── ui/                  # shadcn/ui components (Button, etc.)
-│   ├── generated/
-│   │   └── prisma/              # Prisma client output (auto-generated)
+│   │   ├── ui/                    # shadcn primitives (button, input, etc.)
+│   │   ├── words/                 # word-card.tsx, word-list.tsx, word-search.tsx
+│   │   └── admin/                 # word-form.tsx, admin-header.tsx
+│   ├── server/                    # server-only — never import in client components
+│   │   ├── db/
+│   │   │   └── word.queries.ts    # raw prisma calls (used by RSC + tRPC)
+│   │   └── routers/
+│   │       ├── word.router.ts     # public: list, bySlug
+│   │       └── admin.router.ts    # protected: createWord, updateWord, deleteWord
 │   ├── lib/
-│   │   ├── auth.ts              # next-auth config + exported helpers
-│   │   ├── prisma.ts            # Singleton PrismaClient
-│   │   ├── trpc/
-│   │   │   ├── router.ts        # Root tRPC router
-│   │   │   ├── context.ts       # tRPC context (session, prisma)
-│   │   │   └── client.ts        # tRPC client for Client Components
-│   │   ├── env.ts               # @t3-oss/env-nextjs schema
-│   │   └── utils.ts             # cn() helper
-│   └── hooks/                   # Custom React hooks
-├── .env                         # DATABASE_URL (gitignored)
-├── .env.local                   # NEXTAUTH_SECRET, OAuth keys (gitignored)
-├── .prettierrc                  # Prettier config (no semi, double quotes, 100 cols)
-├── .prettierignore              # Excludes .next, src/generated, pnpm-lock.yaml
-├── components.json              # shadcn/ui config (style: radix-nova)
+│   │   ├── auth.ts                # next-auth config
+│   │   ├── prisma.ts              # singleton PrismaClient
+│   │   ├── env.ts                 # @t3-oss/env-nextjs schema
+│   │   ├── utils.ts               # cn()
+│   │   └── trpc/
+│   │       ├── server.ts          # initTRPC + publicProcedure + adminProcedure
+│   │       ├── context.ts         # createContext (session + prisma)
+│   │       ├── root.ts            # appRouter merging all sub-routers
+│   │       └── client.ts          # createTRPCReact (client components only)
+│   ├── hooks/
+│   │   └── use-debounce.ts
+│   ├── types/
+│   │   └── word.ts                # Zod schemas + inferred TS types
+│   └── generated/
+│       └── prisma/                # Prisma client output (auto-generated, never edit)
+├── .env                           # DATABASE_URL
+├── .env.local                     # NEXTAUTH_SECRET, OAuth keys (gitignored)
+├── .prettierrc
+├── .prettierignore
+├── components.json                # shadcn/ui config (style: radix-nova)
 ├── prisma.config.ts
 ├── next.config.ts
-├── tsconfig.json                # Path alias: @/* → ./src/*
-└── eslint.config.mjs            # Flat config: next + prettier compat + custom rules
+├── tsconfig.json                  # path alias: @/* → ./src/*
+└── eslint.config.mjs
 ```
+
+### Subdomain middleware pattern
+
+```ts
+// src/middleware.ts
+export function middleware(request: NextRequest) {
+  const hostname = request.headers.get("host") ?? ""
+  const isAdminSubdomain = hostname.startsWith("admin.")
+
+  if (isAdminSubdomain) {
+    const url = request.nextUrl.clone()
+    const path = url.pathname === "/" ? "" : url.pathname
+    url.pathname = `/admin${path}`
+    return NextResponse.rewrite(url)
+  }
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
+}
+```
+
+**Dev**: access admin at `localhost:3000/admin` directly (no subdomain needed).  
+**Prod**: `admin.wordly.com/*` transparently rewrites to `/admin/*`.
 
 ---
 
